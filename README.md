@@ -1,6 +1,8 @@
 # bili-sub-archive —— B 站 UP 主内容归档工具
 
-**v0.1.1 · Windows 手动运行的 Python 命令行工具 · 2026-09-29**
+**v0.1.2 · Windows 手动运行的 Python 命令行工具 · 2026-09-29**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 输入一个 B 站 UID 与自己的 Cookie，把该账号**当前可见**的动态、视频、专栏按条目归档到本地：
 动态生成单张长 PNG，专栏转 Markdown，视频下载分 P 并提取文字稿（平台字幕优先、本地 ASR 兜底），
@@ -51,6 +53,7 @@ bsa sync --uid 123456789 --latest 5           # 真正归档
 | 产物长什么样 | 6 输出结构 |
 | 脚本要判断成败 | 7 退出码 |
 | 想知道哪里靠不住 | 8 已知限制、10 故障排查 |
+| 想复用 / 分发 / 二次开发 | 13 许可证（MIT） |
 | 改代码 / 跑测试 | 11 自检与验收、12 文档索引 |
 
 ### 文档
@@ -61,6 +64,7 @@ bsa sync --uid 123456789 --latest 5           # 真正归档
 | [config.example.toml](config.example.toml) | 配置模板（只含占位符，无凭据；覆盖全部配置键，有测试锁死它不漂移） |
 | [prompts/summary.toml](prompts/summary.toml) | 总结 prompt 示例（真 TOML，四个角色可只写一部分） |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | 开发文档：需求范围、技术方案、阶段 0~4 实施与验证结论、已知限制（原始过程记录已收拢到这一份） |
+| [LICENSE](LICENSE) | MIT 许可证全文（第三方组件的各自许可见[开发文档](docs/DEVELOPMENT.md#34-依赖选型与许可证)） |
 
 > **它是给个人本地使用的工具。** 不提供公开分享、付费内容破解或登录权限绕过；
 > 充电内容只在 Cookie 对应账号本身有权限、且平台实际提供时处理，无权限的条目如实记录原因。
@@ -151,7 +155,7 @@ FFmpeg / mmdc 不在 PATH 时，也可以直接在配置里写绝对路径（见
 ```powershell
 bsa check --uid 123456789          # 依赖表 + 配置 + 登录态 + 作者信息
 bsa check --uid 123456789 --scan-output   # 额外扫描产物里有无凭据泄漏
-bsa --version                       # bili-sub-archive 0.1.1（命令 bsa）
+bsa --version                       # bili-sub-archive 0.1.2（命令 bsa）
 ```
 
 `check` 会逐项列出 Python 版本、依赖（含缺失项的**安装命令**）、配置摘要、Cookie 来源、
@@ -589,6 +593,7 @@ v0.1.0 开发期间使用的验收工具（需求第 6 节逐条核对、授权�
 
 ```text
 README.md                                    安装、使用、已知限制（交付说明）
+LICENSE                                      MIT 许可证全文
 config.example.toml                          配置模板（只含占位符）
 prompts/summary.toml                         总结 prompt 示例（真 TOML）
 bili_sub_archive/                            产品代码
@@ -624,3 +629,33 @@ bili_sub_archive/
   render/         动态长图渲染（Pillow + 字体探测）
   summarize/      LLM 客户端、分块、prompt、受控大纲、Mermaid 与 mmdc（mindmap_style = 渲染样式预设）
 ```
+
+---
+
+## 13. 许可证
+
+本项目（`bili-sub-archive` 自身代码与文档）以 **MIT 许可证**发布，全文见 [LICENSE](LICENSE)：
+
+```text
+Copyright (c) 2026 DrScorpio
+
+在遵守下列条件的前提下，任何人可免费获得本软件及关联文档的副本，
+不受限制地使用、复制、修改、合并、发布、分发、再许可和/或销售本软件的副本：
+
+  上述版权声明与本许可声明应包含在本软件的所有副本或主要部分中。
+
+本软件按"原样"提供，不附带任何形式的明示或默示担保。
+```
+
+要点：
+
+- **可以**：商用、修改、再分发、闭源衍生（保留版权与许可声明即可）。
+- **不可以**：以作者名义为衍生品背书；作者不为使用后果承担担保责任。
+- **个人使用与平台规则**：许可证不改变[第 9 节](#9-隐私与凭据)的定位——这是给个人本地使用的工具，
+  不提供公开分享、付费内容破解或登录权限绕过；归档与再利用的合规责任在使用者一侧。
+- **第三方组件各有其许可**：可选依赖与外部可执行文件（yt-dlp、Pillow、faster-whisper、
+  mermaid-cli、FFmpeg、rich、`openai` SDK）**不随本项目分发**，各自的许可证与选型结论见
+  [开发文档 3.4 依赖选型与许可证](docs/DEVELOPMENT.md#34-依赖选型与许可证)。
+- **产物归属**：归档到本地的动态、视频、专栏、文字稿与总结，版权属于原作者/平台，
+  MIT 只覆盖本项目代码，不覆盖被归档的内容。
+
