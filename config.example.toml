@@ -1,0 +1,161 @@
+# bili-sub-archive 配置模板（只含占位符，不含任何凭据）
+#
+# 用法：
+#   1. 复制为 config.toml        —— 可入库的常规配置（本文件就是它的模板）
+#   2. 复制为 config.local.toml  —— 不入库的本地配置（Cookie、LLM 密钥、个人路径）
+#
+# 优先级：默认值 < config.toml < config.local.toml < 环境变量/命令行
+# Cookie 也可以用环境变量 BSA_COOKIE 提供，优先级高于配置文件。
+
+[account]
+# 目标 UP 主 UID（必填，也可用 --uid 或 BSA_UID 指定）
+uid = 1039025435
+# cookie 建议放在 config.local.toml 或环境变量 BSA_COOKIE
+# cookie = "SESSDATA=...; bili_jct=...; buvid3=..."
+
+[output]
+# 输出目录（相对当前工作目录；每个 UID 一个子目录）
+dir = "output"
+# 是否下载动态/专栏配图原图（默认开启）
+download_images = true
+# 图片下载并发数（图片 CDN 匿名可下载，风险低）
+image_workers = 4
+
+# 内容范围：三类均可单独开关
+[scope]
+dynamic = true
+video = true
+article = true
+
+# 默认筛选条件（命令行 --from/--to/--latest 优先）
+[filter]
+# from = "2026-01-01"
+# to = "2026-09-23"
+# latest = 20
+
+[request]
+# 请求间隔（秒）。实测 0.9~1.2s 较稳；过小易触发 -352 风控
+interval_seconds = 1.2
+timeout_seconds = 20
+# 每个请求的失败重试次数（-352 / HTTP 412 会指数退避后重试）
+retries = 3
+# 每类列表最多翻页数（防止接口异常时无限翻页）
+max_pages = 40
+# user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ..."
+
+[discovery]
+# 是否额外扫描 arc/search 的 special_type=charging 子集（与公开列表交叉校验）
+scan_charging_video_subset = true
+# 是否额外扫描 opus/feed/space?type=all（覆盖公开动态流未出现的图文条目）
+scan_dynamic_secondary_source = true
+# 是否对视频取一次 playurl 判定充电权限（只看媒体流形态，不下载媒体）
+probe_video_access = true
+
+# 本地语音转写（默认关闭，关闭时不下载模型、不运行识别）
+[asr]
+enabled = false
+model = "small"
+device = "cpu"
+compute_type = "int8"
+# 识别语言（空串 = 让 faster-whisper 自动判断）
+language = "zh"
+beam_size = 5
+# 转写后是否保留中间音频（16kHz 单声道 WAV，体积较大；默认转写完即删）
+keep_audio = false
+
+# 文字稿来源策略
+[transcript]
+# 优先使用平台现成字幕（主路径，实测本项目样本普遍带 ai-zh）；
+# 关闭后只走本地 ASR
+prefer_subtitle = true
+
+# 视频媒体下载
+[download]
+# 是否下载视频媒体文件（关闭则只归档元数据与文字来源）
+media = true
+# 同时处理的视频数（一个条目内的分 P 也受此并发限制）
+video_workers = 3
+# 单个视频内的分片并发数（传给 yt-dlp 的 concurrent_fragment_downloads）
+segment_workers = 4
+# 清晰度上限：360p / 480p / 720p / 1080p / 1440p / 4k / best
+# 没有 ffmpeg 时只能下渐进式单流，实际清晰度可能低于此值（会在摘要里说明）
+quality = "1080p"
+# 单个分 P 的下载超时（秒）
+timeout_seconds = 60
+# ffmpeg / ffprobe 路径：留空则从 PATH 查找；也可以填所在目录
+# ffmpeg_path = "C:\\ffmpeg\\bin"
+# ffprobe_path = "C:\\ffmpeg\\bin"
+
+# 动态单张长图（需要 Pillow）
+[render]
+dynamic_png = true
+# 图片宽度（像素）；高度随内容自动增长
+width = 1080
+# 高度上限：超过则截断并在运行摘要里明确告警（不静默截断）
+max_height = 20000
+# 中文字体：留空则自动探测系统字体（msyh.ttc → Deng.ttf → simhei.ttf → …）
+# font = "C:\\Windows\\Fonts\\msyh.ttc"
+
+# 总结（OpenAI 兼容接口：base_url 指向 /v1 即可，自动补 /chat/completions）
+[summary]
+# 是否生成总结（关闭则 summary/mindmap 都记 skipped）
+enabled = true
+# 接口地址与模型：留空 = 未配置，有文字稿的视频会记 skipped(llm_not_configured)
+# 例：base_url = "https://api.openai.com/v1"、model = "gpt-4o-mini"
+base_url = ""
+model = ""
+# LLM 密钥：填在引号内即可（本地端点 Ollama / LM Studio 等通常留空）。
+# 优先级：环境变量 BSA_LLM_API_KEY / OPENAI_API_KEY > config.local.toml > config.toml。
+# 建议只填在 config.local.toml（不入库），本模板不要写真实密钥。
+api_key = ""
+# 传输方式：auto（装了 openai SDK 就用 SDK，否则标准库直连）/ sdk / http
+client = "auto"
+# 自定义 prompt 文件（可选，缺哪节用哪节的内置默认）：
+#   真 TOML：顶层键 system / map / reduce / full（见 prompts/summary.toml）
+#   INI 风格：分节 [system] / [map] / [reduce] / [full]
+# 占位符 {transcript} {points} {chars} {chunks} {pages} {title} {author} {index}；
+# map/full 必须带 {transcript}、reduce 必须带 {points}，否则直接报配置错误。
+# 不填 = 用内置 prompt。改 prompt 后指纹变化，下次 sync/retry 会自动重做总结与导图。
+# prompt_file = "prompts/summary.toml"
+# 长稿分块：每块字数、最多调用多少次模型（超上限时放大每块，绝不丢尾段）、重叠字数
+chunk_chars = 6000
+max_chunks = 40
+overlap_chars = 200
+temperature = 0.2
+# 单次回复的 token 上限（太小会导致输出被截断，产物里会提示）。
+# 内置默认 2048；推理模型（如 deepseek 系列）的思考 token 也计入上限，实测 2048 会在写完正文前用光，
+# 表现为「模型返回内容为空」或摘要断在半句、大纲缺失 —— 用推理模型时建议提到 8192。
+max_tokens = 8192
+timeout_seconds = 120
+retries = 2
+# 文字稿少于该字数就不生成总结（需求 3.3.6：文字不足不得编造）
+min_chars = 200
+# 密钥也可只走环境变量 BSA_LLM_API_KEY / OPENAI_API_KEY（优先级高于本文件）
+
+# 思维导图（.mmd 用确定性序列化生成，PNG 需要 mermaid-cli）
+[mindmap]
+enabled = true
+# mmdc 路径：留空则从 PATH 查找（npm install -g @mermaid-js/mermaid-cli）
+# mmdc_path = "C:\\Users\\me\\AppData\\Roaming\\npm\\mmdc.cmd"
+# 受控大纲的上限（防止模型给出几百个节点把导图撑爆）
+max_nodes = 60
+max_depth = 3
+label_chars = 24
+# PNG 宽度与背景色
+width = 1600
+background = "white"
+timeout_seconds = 120
+# 需要给 puppeteer 传额外配置时指定 json 文件（也可用于容器里加 --no-sandbox）。
+# mmdc 的 puppeteer 找不到浏览器（报 Could not find Chrome / node.launch）时两条路：
+#   ① 装 Chrome for Testing（约 196 MB，官方源不通时换镜像）：
+#      cd "$env:APPDATA\npm\node_modules\@mermaid-js\mermaid-cli"
+#      npx --no-install puppeteer browsers install chrome --base-url https://cdn.npmmirror.com/binaries/chrome-for-testing
+#      装完不需要本项，puppeteer 会自己找到缓存里的浏览器。
+#   ② 免下载：指向系统已装的 Edge / Chrome，把本项指到那个 json（机器相关路径，别入库）：
+#      { "executablePath": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+#        "args": ["--no-sandbox", "--disable-gpu"] }
+# puppeteer_config = ".cache/puppeteer.json"
+
+[storage]
+# 写锁被判为陈旧的时长（小时）：上次运行被强杀后可自动抢占
+lock_stale_hours = 6

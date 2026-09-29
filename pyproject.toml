@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bili-sub-archive"
+version = "0.1.0"
+description = "B 站 UP 主内容归档工具（动态/视频/专栏 → 本地归档、文字稿、总结与思维导图）"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+# 归档核心不引入任何第三方运行时依赖：只使用标准库
+dependencies = []
+
+[project.optional-dependencies]
+# 按功能分组安装；未启用 ASR 时不要求下载模型
+# 注意：ffmpeg / ffprobe / mmdc 是**外部可执行文件**，不通过 pip 安装
+#       （winget install Gyan.FFmpeg / npm install -g @mermaid-js/mermaid-cli），
+#       缺失时 media 只能下渐进式单流、transcript 无法走本地 ASR、mindmap 只有 .mmd（check 会报告）
+media = ["yt-dlp>=2026.8.19", "Pillow>=12.3.0"]
+asr = ["faster-whisper>=1.2.1"]
+# 总结的 openai SDK 是**可选**的：未安装时 summarize.llm 用标准库直连同一端点
+summary = ["openai>=3.19.0"]
+# 终端美化（可选）：不装则 bili_sub_archive.ui 退化为纯文本，功能与退出码完全一致。
+# 注意 rich 自己会带 markdown-it-py 与 pygments 两条依赖链。
+ui = ["rich>=13.7.0"]
+
+[project.scripts]
+# 主命令：bsa（bili-sub-archive 的短名，日常敲这个）
+bsa = "bili_sub_archive.cli:main"
+# 全名别名：与分发包名一致，用于脚本/文档里自解释
+bili-sub-archive = "bili_sub_archive.cli:main"
+# 弃用别名：旧名 SubVideo 仍可用一个版本，退出时在 stderr 提示改用 bsa
+subvideo = "bili_sub_archive.cli:main"
+
+[tool.setuptools]
+packages = [
+    "bili_sub_archive",
+    "bili_sub_archive.bili",
+    "bili_sub_archive.archive",
+    "bili_sub_archive.transcript",
+    "bili_sub_archive.render",
+    "bili_sub_archive.summarize",
+]
