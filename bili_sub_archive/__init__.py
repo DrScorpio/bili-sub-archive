@@ -19,7 +19,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 #: ``metadata.json`` / ``index.json`` 的格式版本。
 #: 2 = 阶段 2：步骤表新增 ``media``/``transcript``/``render`` 的实际实现，

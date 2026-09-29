@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bili-sub-archive"
-version = "0.1.0"
+version = "0.1.1"
 description = "B 站 UP 主内容归档工具（动态/视频/专栏 → 本地归档、文字稿、总结与思维导图）"
 readme = "README.md"
 requires-python = ">=3.11"

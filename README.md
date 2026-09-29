@@ -1,6 +1,6 @@
 # bili-sub-archive —— B 站 UP 主内容归档工具
 
-**v0.1.0 · Windows 手动运行的 Python 命令行工具 · 2026-09-23**
+**v0.1.1 · Windows 手动运行的 Python 命令行工具 · 2026-09-29**
 
 输入一个 B 站 UID 与自己的 Cookie，把该账号**当前可见**的动态、视频、专栏按条目归档到本地：
 动态生成单张长 PNG，专栏转 Markdown，视频下载分 P 并提取文字稿（平台字幕优先、本地 ASR 兜底），
@@ -148,7 +148,7 @@ FFmpeg / mmdc 不在 PATH 时，也可以直接在配置里写绝对路径（见
 ```powershell
 bsa check --uid 1039025435          # 依赖表 + 配置 + 登录态 + 作者信息
 bsa check --uid 1039025435 --scan-output   # 额外扫描产物里有无凭据泄漏
-bsa --version                       # bili-sub-archive 0.1.0（命令 bsa）
+bsa --version                       # bili-sub-archive 0.1.1（命令 bsa）
 ```
 
 `check` 会逐项列出 Python 版本、依赖（含缺失项的**安装命令**）、配置摘要、Cookie 来源、
