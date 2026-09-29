@@ -19,10 +19,13 @@ pip install -e ".[ui,media]"                # 归档核心零依赖；这两组�
 
 $env:BSA_COOKIE = "SESSDATA=...; bili_jct=...; buvid3=..."
 
-bsa check --uid 1039025435                     # 逐项自检：Python、依赖、配置、登录态
-bsa sync --uid 1039025435 --latest 5 --dry-run # 先看会选中哪些条目，不落盘
-bsa sync --uid 1039025435 --latest 5           # 真正归档
+bsa check --uid 123456789                     # 逐项自检：Python、依赖、配置、登录态
+bsa sync --uid 123456789 --latest 5 --dry-run # 先看会选中哪些条目，不落盘
+bsa sync --uid 123456789 --latest 5           # 真正归档
 ```
+
+> 本文示例里的 `123456789` 是**占位 UID**，请换成你要归档的 UP 主数字 ID
+> （就是他空间页 `space.bilibili.com/<那串数字>` 里的数字，通常 6~10 位）。
 
 `sync` 一个命令同时承担"首次采集"与"增量重跑"：再跑一次只会补没做完的步骤，
 不重复下载、不重复调用模型。失败或有配置变更时，用 `retry` 定向补做（见 5.4）。
@@ -57,11 +60,11 @@ bsa sync --uid 1039025435 --latest 5           # 真正归档
 | 本文件 | 安装、配置、使用、已知限制（交付说明） |
 | [config.example.toml](config.example.toml) | 配置模板（只含占位符，无凭据；覆盖全部配置键，有测试锁死它不漂移） |
 | [prompts/summary.toml](prompts/summary.toml) | 总结 prompt 示例（真 TOML，四个角色可只写一部分） |
-| [docs/archive/](docs/archive/README.md) | v0.1.0 开发过程归档：需求、开发方案、逐阶段实施与验证记录、当时的验证工具（**冻结，不再维护**） |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | 开发文档：需求范围、技术方案、阶段 0~4 实施与验证结论、已知限制（原始过程记录已收拢到这一份） |
 
 > **它是给个人本地使用的工具。** 不提供公开分享、付费内容破解或登录权限绕过；
 > 充电内容只在 Cookie 对应账号本身有权限、且平台实际提供时处理，无权限的条目如实记录原因。
-> **不提供本地视频画面 OCR**（决策依据见[组件验证记录](docs/archive/stage0-component-verification.md)第 2.1 节）。
+> **不提供本地视频画面 OCR**（决策依据见[开发文档](docs/DEVELOPMENT.md#35-不提供本地视频画面-ocr-的决策)）。
 
 ---
 
@@ -119,7 +122,7 @@ pip install -e ".[ui]"               # + rich（终端彩色与实时进度；�
 pip install -e ".[media,summary]"    # 也可以一次装多组
 ```
 
-> 装了 `openai` SDK 会在环境里多出 `httpx2` 依赖链（见[组件验证记录](docs/archive/stage0-component-verification.md)第 2.3 节）。
+> 装了 `openai` SDK 会在环境里多出 `httpx2` 依赖链（见[开发文档](docs/DEVELOPMENT.md#34-依赖选型与许可证)）。
 > 想保持依赖面最小，就**不要**装 `summary` 组 —— 总结默认用标准库直连。
 > 同理，`rich` 自己会带 `markdown-it-py` 与 `pygments`；**不装 `ui` 组**时输出退化为纯文本，
 > 归档与总结能力一点不少（见 5.6）。
@@ -146,8 +149,8 @@ FFmpeg / mmdc 不在 PATH 时，也可以直接在配置里写绝对路径（见
 ### 3.4 验证安装
 
 ```powershell
-bsa check --uid 1039025435          # 依赖表 + 配置 + 登录态 + 作者信息
-bsa check --uid 1039025435 --scan-output   # 额外扫描产物里有无凭据泄漏
+bsa check --uid 123456789          # 依赖表 + 配置 + 登录态 + 作者信息
+bsa check --uid 123456789 --scan-output   # 额外扫描产物里有无凭据泄漏
 bsa --version                       # bili-sub-archive 0.1.1（命令 bsa）
 ```
 
@@ -246,41 +249,41 @@ api_key = "sk-..."        # 环境变量 BSA_LLM_API_KEY / OPENAI_API_KEY 优先
 
 ```powershell
 # 指定日期范围（北京时间，含当日）
-bsa sync --uid 1039025435 --from 2026-01-01 --to 2026-09-23
+bsa sync --uid 123456789 --from 2026-01-01 --to 2026-09-23
 
 # 三类合计取最新 20 条
-bsa sync --uid 1039025435 --latest 20
+bsa sync --uid 123456789 --latest 20
 
 # 先看会选中什么（不创建条目目录、不下载；仍会更新 index.json 与 _runs 运行记录）
-bsa sync --uid 1039025435 --latest 20 --dry-run
+bsa sync --uid 123456789 --latest 20 --dry-run
 
 # 再次运行同一命令 = 增量：已完成的步骤跳过，不重复下载、不重复调用模型
-bsa sync --uid 1039025435 --latest 20
+bsa sync --uid 123456789 --latest 20
 ```
 
 ### 5.2 按需开关与调参
 
 ```powershell
-bsa sync --uid 1039025435 --latest 20 --types dynamic,article   # 只要动态与专栏
-bsa sync --uid 1039025435 --latest 20 --no-media                # 不下视频媒体，只要元数据与文字稿
-bsa sync --uid 1039025435 --latest 20 --no-images               # 不下载动态/专栏配图原图
-bsa sync --uid 1039025435 --latest 20 --no-render               # 不生成动态长 PNG
-bsa sync --uid 1039025435 --latest 20 --no-summary --no-mindmap # 不要总结与导图
-bsa sync --uid 1039025435 --latest 20 --asr --asr-model small   # 无字幕的分 P 走本地 ASR
-bsa sync --uid 1039025435 --latest 20 --asr-language zh         # 指定识别语言（空串 = 自动判断）
-bsa sync --uid 1039025435 --latest 20 --video-workers 2 --segment-workers 4 --quality 720p
-bsa sync --uid 1039025435 --latest 20 --interval 1.5 --max-pages 20
+bsa sync --uid 123456789 --latest 20 --types dynamic,article   # 只要动态与专栏
+bsa sync --uid 123456789 --latest 20 --no-media                # 不下视频媒体，只要元数据与文字稿
+bsa sync --uid 123456789 --latest 20 --no-images               # 不下载动态/专栏配图原图
+bsa sync --uid 123456789 --latest 20 --no-render               # 不生成动态长 PNG
+bsa sync --uid 123456789 --latest 20 --no-summary --no-mindmap # 不要总结与导图
+bsa sync --uid 123456789 --latest 20 --asr --asr-model small   # 无字幕的分 P 走本地 ASR
+bsa sync --uid 123456789 --latest 20 --asr-language zh         # 指定识别语言（空串 = 自动判断）
+bsa sync --uid 123456789 --latest 20 --video-workers 2 --segment-workers 4 --quality 720p
+bsa sync --uid 123456789 --latest 20 --interval 1.5 --max-pages 20
 ```
 
 ### 5.3 总结与导图
 
 ```powershell
 $env:BSA_LLM_API_KEY = "sk-..."
-bsa sync --uid 1039025435 --latest 5 `
+bsa sync --uid 123456789 --latest 5 `
   --summary-base-url https://api.example.com/v1 --summary-model gpt-4o-mini
 
-bsa sync --uid 1039025435 --latest 5 --summary-prompt prompts/summary.toml
-bsa sync --uid 1039025435 --latest 5 --mmdc "C:\Users\me\AppData\Roaming\npm\mmdc.cmd"
+bsa sync --uid 123456789 --latest 5 --summary-prompt prompts/summary.toml
+bsa sync --uid 123456789 --latest 5 --mmdc "C:\Users\me\AppData\Roaming\npm\mmdc.cmd"
 ```
 
 自定义 prompt 两种写法都支持，缺哪节就用哪节的内置默认（也可只写一节）：
@@ -309,11 +312,11 @@ full   = "以下是完整文字稿（{title}，{chars} 字）：\n{transcript}\n
 ### 5.4 补做（失败或被配置变更影响的步骤）
 
 ```powershell
-bsa retry --uid 1039025435 --steps summary,mindmap   # 只补总结与导图
-bsa retry --uid 1039025435 --steps media             # 装好 yt-dlp/FFmpeg 后补下载
-bsa retry --uid 1039025435 --steps transcript --asr  # 开启 ASR 后补文字稿
-bsa retry --uid 1039025435 --steps mindmap           # 装好 mmdc 后只补渲染
-bsa sync  --uid 1039025435 --latest 20 --force       # 忽略状态，强制重跑
+bsa retry --uid 123456789 --steps summary,mindmap   # 只补总结与导图
+bsa retry --uid 123456789 --steps media             # 装好 yt-dlp/FFmpeg 后补下载
+bsa retry --uid 123456789 --steps transcript --asr  # 开启 ASR 后补文字稿
+bsa retry --uid 123456789 --steps mindmap           # 装好 mmdc 后只补渲染
+bsa sync  --uid 123456789 --latest 20 --force       # 忽略状态，强制重跑
 ```
 
 改 prompt / 换模型 / 换分块参数会改变**输入指纹**，`retry` 会自动把"已完成但已过时"的
@@ -325,7 +328,7 @@ bsa sync  --uid 1039025435 --latest 20 --force       # 忽略状态，强制重�
 ### 5.5 机器可读输出
 
 ```powershell
-bsa sync --uid 1039025435 --latest 20 --json | Out-File run.json -Encoding utf8
+bsa sync --uid 123456789 --latest 20 --json | Out-File run.json -Encoding utf8
 ```
 
 `--json`、`-v/--verbose`、`--quiet`、`--config`、`--color`、`--no-progress`
@@ -340,9 +343,9 @@ bsa sync --uid 1039025435 --latest 20 --json | Out-File run.json -Encoding utf8
 自动退化为纯文本（可 grep、无 ANSI 转义）。
 
 ```powershell
-bsa sync --uid 1039025435 --latest 20 --color=never   # 明确不要颜色
-bsa sync --uid 1039025435 --latest 20 --color=always  # 强制颜色（含重定向）
-bsa sync --uid 1039025435 --latest 20 --no-progress   # 关掉进度条
+bsa sync --uid 123456789 --latest 20 --color=never   # 明确不要颜色
+bsa sync --uid 123456789 --latest 20 --color=always  # 强制颜色（含重定向）
+bsa sync --uid 123456789 --latest 20 --no-progress   # 关掉进度条
 ```
 
 | 开关 / 变量 | 作用 |
@@ -386,7 +389,7 @@ bsa sync --uid 1039025435 --latest 20 --no-progress   # 关掉进度条
 | `classic` | 不加任何样式：等同改造前的 mermaid 默认观感 |
 
 ```powershell
-bsa retry --uid 1039025435 --steps mindmap --mindmap-style dark   # 换样式 = 只重渲染 PNG
+bsa retry --uid 123456789 --steps mindmap --mindmap-style dark   # 换样式 = 只重渲染 PNG
 ```
 
 ```toml
@@ -426,7 +429,7 @@ css_file = "mindmap.css"           # #my-svg .section-0 path { stroke: #4c7df0 !
 
 ```text
 output/
-  <UID>_<UP名称>/
+  123456789_<UP名称>/
     index.json                      条目索引（可由各条目 metadata.json 重建）
     _runs/20260923T181220_0800.json 每次运行的结构化摘要
     2026-09-23_动态_摘要_<动态ID>/
@@ -523,7 +526,7 @@ output/
 | `render` 记 `failed(dependency_missing)` | 缺 Pillow。`pip install ".[media]"` 后 `retry --steps render` |
 | `mindmap` 记 `failed(dependency_missing)` | 缺 `mmdc`。装 Node.js + mermaid-cli，或用 `--mmdc <路径>`；`.mmd` 已在手 |
 | `mindmap` 记 `failed(render_failed)`，mmdc 报 `Could not find Chrome` / `node.launch` | mermaid-cli 的 puppeteer 没装到 Chromium（官方下载源被网络阻断时常见）。两条路：① 装浏览器——`cd "$env:APPDATA\npm\node_modules\@mermaid-js\mermaid-cli"` 后 `npx puppeteer browsers install chrome --base-url https://cdn.npmmirror.com/binaries/chrome-for-testing`；② 免下载——写一个 puppeteer 配置指向系统已装的 Edge/Chrome（`{"executablePath": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"}`），再把 `[mindmap] puppeteer_config` 指过去，然后 `retry --steps mindmap` |
-| 改了 `[mindmap] style` 但 PNG 还是旧观感 | 样式属于导图输入指纹，必须重跑这一步：`retry --uid <UID> --steps mindmap`（`sync` 也会自动重做）。回默认观感用 `style = "classic"` |
+| 改了 `[mindmap] style` 但 PNG 还是旧观感 | 样式属于导图输入指纹，必须重跑这一步：`retry --uid 123456789 --steps mindmap`（`sync` 也会自动重做）。回默认观感用 `style = "classic"` |
 | 导图 PNG 比 `[mindmap] width` 宽 | 这是预设的有意行为：关掉缩放后宽导图按内容自然宽度出图，文字更大；要固定宽度用 `style = "classic"` |
 | 导图 PNG 中文字体不对／成方块 | 预设字体栈是 `微软雅黑 → 苹方 → 思源黑体 → sans-serif`，本机都没有时用 `[mindmap] font_family` 指一份已装字体（如 `"Noto Sans SC"`），再 `retry --steps mindmap` |
 | `summary` 记 `skipped(llm_not_configured)` | 没配端点/模型。填 `[summary] base_url` 与 `model`（或环境变量）后 `retry --steps summary,mindmap` |
@@ -547,7 +550,7 @@ python -m unittest discover -s tests -t .
 ```
 
 当前基线：**503 项用例全部通过**。其中 1 项（`test_render_wiring.py` 的真实响应渲染）
-依赖 `docs/archive/stage0-evidence/` 里的脱敏样本，该目录按 `.gitignore` 不入库，
+依赖 `docs/archive/stage0-evidence/` 里的脱敏样本——那是**本机保留、不入库**的阶段 0 证据，
 缺失时自动跳过（输出里的 `s`）。
 
 测试套件锁死的是**交付面**，防止"代码改了文档没改"：
@@ -571,14 +574,14 @@ python -m unittest discover -s tests -t .
 | `tests/test_render_wiring.py` | 10 | 长图渲染**接线**：真实阶段 0 响应 → 渲染项 → 长 PNG（样本缺失时自动跳过） |
 
 v0.1.0 开发期间使用的验收工具（需求第 6 节逐条核对、授权在线验收、动态长图/导图单项检查、
-本机替身模型服务）已随过程记录归档到 [`docs/archive/tools/`](docs/archive/README.md)，
-**不再维护**，需要时按[归档说明](docs/archive/README.md)自行调整路径后运行。
+本机替身模型服务）已随原始过程记录一起从仓库移除；它们的结论与决策依据收拢在
+[开发文档](docs/DEVELOPMENT.md)里。需要复现某次验证时，建议按那里的**结论与命令**
+用当前代码重跑，而不是去找当时的脚本。
 
 > **覆盖缺口**：离线套件对"真实 HTTP 链路"只覆盖到客户端单元层
 > （`summarize.llm` 的标准库客户端配注入 transport），编排层用的是 `FakeChatClient`；
-> 原先那条"编排 + 真实 `urllib` 客户端 + 本机替身模型服务
-> （`docs/archive/tools/stage3/local_llm_stub.py`）"的用例已随工具归档移除。
-> 需要验证真实链路时，可按归档说明起替身服务后手工跑一次。
+> 原先那条"编排 + 真实 `urllib` 客户端 + 本机替身模型服务"的用例已随验证工具移除。
+> 需要验证真实链路时，自建一个 OpenAI 兼容的替身服务后手工跑一次。
 
 ---
 
@@ -588,16 +591,10 @@ v0.1.0 开发期间使用的验收工具（需求第 6 节逐条核对、授权�
 README.md                                    安装、使用、已知限制（交付说明）
 config.example.toml                          配置模板（只含占位符）
 prompts/summary.toml                         总结 prompt 示例（真 TOML）
-bili_sub_archive/                                    产品代码
+bili_sub_archive/                            产品代码
 tests/                                       离线测试（503 项，见 11）
-docs/archive/README.md                       开发过程归档索引（冻结，不再维护）
-docs/archive/REQUIREMENTS.md                 需求与验收标准
-docs/archive/DEVELOPMENT_PLAN.md             开发方案与阶段门槛
-docs/archive/stage0-platform-verification.md 接口白名单、11 条契约、充电可见性实测
-docs/archive/stage0-component-verification.md 依赖许可证、维护状态、Python 3.14 兼容性
-docs/archive/stage1|2|3|4-*.md               各阶段实施与验证记录
-docs/archive/tools/                          当时的验证工具源码（不再维护）
-docs/archive/stage0-evidence/                阶段 0 脱敏响应样本（不入库）
+docs/DEVELOPMENT.md                          开发文档：需求范围、技术方案、阶段 0~4 实施与验证结论、已知限制
+docs/archive/stage0-evidence/                阶段 0 脱敏响应样本（本机保留，不入库）
 ```
 
 ### 代码结构

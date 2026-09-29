@@ -9,12 +9,10 @@
 - **总结与导图**：OpenAI 兼容接口的分块总结（长稿不丢尾段）、自定义 prompt、
   受控大纲、Mermaid ``mindmap.mmd`` 与 ``mindmap.png``（PNG 失败保留源文件可重试）。
 
-设计与契约依据（开发过程记录已归档，仅作追溯，不再维护）：
+设计与契约依据（原始过程记录已从仓库移除，结论收拢在开发文档里）：
 
-- ``docs/archive/DEVELOPMENT_PLAN.md`` 第 3、4、5 节
-- ``docs/archive/stage0-platform-verification.md`` 第 5 节（接口白名单 + 11 条契约）
-- ``docs/archive/stage1-basic-archive.md``、``docs/archive/stage2-media-and-transcript.md``、
-  ``docs/archive/stage3-summary-and-mindmap.md``、``docs/archive/stage4-stability-and-delivery.md``
+- ``docs/DEVELOPMENT.md`` 第 3 节：技术方案（模块数据流、接口白名单、适配层契约、关键决策）
+- ``docs/DEVELOPMENT.md`` 第 4 节：阶段 0~4 的实施与验证结论、已知限制
 """
 
 from __future__ import annotations

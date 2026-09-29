@@ -9,7 +9,8 @@
 
 [account]
 # 目标 UP 主 UID（必填，也可用 --uid 或 BSA_UID 指定）
-uid = 1039025435
+# 下面的 123456789 是占位符，换成你要归档的 UP 主数字 ID
+uid = 123456789
 # cookie 建议放在 config.local.toml 或环境变量 BSA_COOKIE
 # cookie = "SESSDATA=...; bili_jct=...; buvid3=..."
 

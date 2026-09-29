@@ -1,6 +1,6 @@
 """凭据脱敏：任何落盘、打印、日志路径都必须先过 :class:`Redactor`。
 
-沿用阶段 0 ``docs/archive/tools/stage0/credstore.py`` 的实现并补两道防线：
+沿用阶段 0 凭据存储的实现思路（见 ``docs/DEVELOPMENT.md`` 第 7 节）并补两道防线：
 
 1. :meth:`Redactor.redact_obj` 递归脱敏任意 JSON 结构；
 2. :func:`scan_for_secrets` 在写出产物后回扫，发现凭据值即报错（阶段 0 探针同款校验）。

@@ -1,7 +1,7 @@
 """WBI 签名（B 站 web 端接口风控签名）。
 
-算法与 ``docs/archive/tools/stage0/wbi.py``（阶段 0 实测可用）一致；正式包内独立一份，
-阶段 0 的探针代码不参与产品运行。
+算法在阶段 0 联调实测可用（见 ``docs/DEVELOPMENT.md`` 第 4.1 节）；正式包内独立一份，
+阶段 0 的探针代码已不随仓库维护。
 
 参考: https://github.com/SocialSisterYi/bilibili-API-collect/blob/master/docs/misc/sign/wbi.md
 """

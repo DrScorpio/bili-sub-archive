@@ -9,8 +9,9 @@
 5. 依赖安装提示覆盖全部被探测的依赖；
 6. 仓库里没有真实凭据、``.gitignore`` 覆盖凭据与产物目录。
 
-v0.1.0 发布时，需求/方案/阶段记录与当时的验收工具已移入 ``docs/archive/``（冻结）。
-原先覆盖那些工具的用例随之删除——它们测的是已归档、不再维护的代码。
+v0.1.0 发布时，需求/方案/阶段记录与当时的验收工具曾移入 ``docs/archive/``；
+这些原始过程记录与工具后来已从仓库移除，结论收拢到 ``docs/DEVELOPMENT.md``。
+原先覆盖那些工具的用例随之删除——它们测的是不再随仓库维护的代码。
 """
 
 from __future__ import annotations
@@ -193,7 +194,7 @@ class ConfigTemplateTest(unittest.TestCase):
             (root / "config.toml").write_text(template_text(), encoding="utf-8")
             loaded = load_config(root=root)
             cfg = loaded.config
-            self.assertEqual(cfg.uid, 1039025435)          # 模板里的示例 UID
+            self.assertEqual(cfg.uid, 123456789)          # 模板里的占位 UID
             self.assertEqual(cfg.enabled_kinds, ["dynamic", "video", "article"])
             self.assertAlmostEqual(cfg.interval_seconds, 1.2)
             self.assertEqual(cfg.video_workers, 3)
@@ -244,8 +245,8 @@ class ReadmeContractTest(unittest.TestCase):
                    for name, sub_parser in sub.choices.items()}
         unknown: list[str] = []
         for line in self.text.splitlines():
-            # 归档路径下的命令不再属于产品 CLI 面，跳过（见 docs/archive/README.md）
-            if "bsa " not in line or "docs/archive" in line:
+            # 文档路径行（开发文档索引等）不属于产品 CLI 面，跳过
+            if "bsa " not in line or "docs/" in line:
                 continue
             tokens = line.split("bsa ", 1)[1].split()
             command = next((t for t in tokens if t in per_cmd), None)
@@ -274,15 +275,17 @@ class ReadmeContractTest(unittest.TestCase):
                 broken.append(target)
         self.assertEqual(broken, [], f"README 链接指向不存在的路径：{broken}")
 
-    def test_readme_points_archive_at_frozen_records(self):
-        """过程记录必须落在 docs/archive/，且 README 明确声明它冻结、不再维护。"""
-        self.assertTrue((ROOT / "docs" / "archive" / "README.md").is_file())
-        self.assertIn("docs/archive/", self.text)
-        self.assertIn("不再维护", self.text)
+    def test_readme_points_at_development_doc(self):
+        """开发文档必须是 ``docs/DEVELOPMENT.md``，且仓库根目录不再散落过程文档。"""
+        self.assertTrue((ROOT / "docs" / "DEVELOPMENT.md").is_file())
+        self.assertIn("docs/DEVELOPMENT.md", self.text)
+        # 原始过程记录（文档 + 验证工具）已从仓库移除；只留本机不入库的脱敏样本
+        self.assertFalse((ROOT / "docs" / "archive" / "README.md").exists())
+        self.assertFalse((ROOT / "docs" / "archive" / "tools").exists())
         # 仓库根目录不再散落开发过程文档
         for stray in ("DEVELOPMENT_PLAN.md", "REQUIREMENTS.md"):
-            self.assertFalse((ROOT / stray).exists(), f"{stray} 应已归档到 docs/archive/")
-        self.assertFalse((ROOT / "tools").exists(), "tools/ 应已归档到 docs/archive/tools/")
+            self.assertFalse((ROOT / stray).exists(), f"{stray} 不应留在仓库根目录")
+        self.assertFalse((ROOT / "tools").exists(), "tools/ 不应留在仓库根目录")
 
 
 class CliSurfaceTest(unittest.TestCase):
@@ -407,7 +410,7 @@ class RepoHygieneTest(unittest.TestCase):
     """仓库卫生：没有真实凭据，产物目录都已忽略。"""
 
     SCAN_FILES = ("README.md", "config.example.toml", "pyproject.toml",
-                  "docs/archive/DEVELOPMENT_PLAN.md", "docs/archive/REQUIREMENTS.md")
+                  "docs/DEVELOPMENT.md")
 
     def test_gitignore_covers_credentials_and_artifacts(self):
         lines = {line.strip() for line in (ROOT / ".gitignore").read_text(encoding="utf-8")

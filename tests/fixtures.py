@@ -2,7 +2,7 @@
 
 样本结构严格照抄阶段 0 记录的**真实字段路径**
 （``docs/archive/stage0-evidence/raw/*.json`` 与
-``docs/archive/stage0-platform-verification.md``），
+``docs/DEVELOPMENT.md`` 第 4.1 节的平台验证结论），
 使离线测试能覆盖：
 
 - ``modules`` 的双形状（``/detail`` 是 dict，``opus/detail`` 是 list）；
