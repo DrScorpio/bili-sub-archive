@@ -928,7 +928,14 @@ class Stage3FlowTest(FlowTestBase):
         self.assertEqual(retry.selected, 1)
         self.assertEqual(chat.calls, [], "总结指纹未变 → 不该重新调用模型")
         self.assertTrue((entry_dir / "mindmap.png").is_file())
-        self.assertEqual(self.metadata("video", BV_NORMAL)["steps"]["mindmap"]["status"], STEP_DONE)
+        done = self.metadata("video", BV_NORMAL)
+        self.assertEqual(done["steps"]["mindmap"]["status"], STEP_DONE)
+        self.assertEqual(done["steps"]["mindmap"]["reason"], "")
+        # 步骤状态与详情块必须一致：status=done 不该还挂着上次失败的 reason
+        detail = done["extra"]["summary"]["mindmap"]
+        self.assertEqual(detail["status"], "done")
+        self.assertEqual(detail["reason"], "")
+        self.assertEqual(detail["error_kind"], "")
 
     def test_reuse_skips_model_calls_when_fingerprint_matches(self):
         """媒体开关变化触发重跑整条流程，但总结指纹未变 → 不重复调用模型。"""
@@ -939,6 +946,13 @@ class Stage3FlowTest(FlowTestBase):
         calls_after_first = len(chat.calls)
         self.assertGreater(calls_after_first, 0)
 
+        # 模拟旧产物里的矛盾字段（补做成功却没清 reason）：复用分支必须清掉它
+        meta_path = self.entry_dir("video", BV_NORMAL) / METADATA_NAME
+        stale = json.loads(meta_path.read_text(encoding="utf-8"))
+        stale["extra"]["summary"]["mindmap"]["reason"] = "render_failed"
+        stale["extra"]["summary"]["mindmap"]["error_kind"] = "render_failed"
+        meta_path.write_text(json.dumps(stale, ensure_ascii=False, indent=2), encoding="utf-8")
+
         retry = self.make_runner(api, kinds=["video"], chat_client=chat,
                                  mmdc_runner=fx.fake_mmdc_runner(),
                                  **self.options()).retry(RunOptions())
@@ -948,6 +962,10 @@ class Stage3FlowTest(FlowTestBase):
         self.assertEqual(meta["steps"]["summary"]["status"], STEP_DONE)
         self.assertTrue(meta["extra"]["summary"]["reused"])
         self.assertTrue(meta["extra"]["summary"]["mindmap"]["reused"])
+        self.assertEqual(meta["extra"]["summary"]["mindmap"]["reason"], "")
+        self.assertEqual(meta["extra"]["summary"]["mindmap"]["error_kind"], "")
+        # 复用分支不重新渲染，但样式仍要如实落进 metadata（PNG 就是这套样式出的）
+        self.assertEqual(meta["extra"]["summary"]["mindmap"]["style"], "paper")
         self.assertEqual(meta["steps"]["media"]["status"], STEP_DONE)
 
     def test_prompt_change_triggers_redo(self):

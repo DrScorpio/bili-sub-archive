@@ -133,6 +133,8 @@ def add_override_flags(parser: argparse.ArgumentParser) -> None:
                         help="自定义 prompt 文件（分节 [system]/[map]/[reduce]/[full]）")
     parser.add_argument("--mmdc", dest="mindmap_mmdc_path",
                         help="mermaid-cli（mmdc）路径：留空则从 PATH 查找")
+    parser.add_argument("--mindmap-style", dest="mindmap_style",
+                        help="导图渲染样式：paper（默认，浅色卡片）/ pastel / dark / classic")
     parser.add_argument("--video-workers", type=int, help="同时下载的视频数（默认 3）")
     parser.add_argument("--segment-workers", type=int, help="单视频内分片并发数（默认 4）")
     parser.add_argument("--quality", dest="video_quality",
@@ -194,6 +196,7 @@ def _overrides(args) -> dict:
         "summary_base_url": getattr(args, "summary_base_url", None),
         "summary_prompt_file": getattr(args, "summary_prompt_file", None),
         "mindmap_mmdc_path": getattr(args, "mindmap_mmdc_path", None),
+        "mindmap_style": getattr(args, "mindmap_style", None),
         "interval_seconds": getattr(args, "interval_seconds", None),
         "max_pages": getattr(args, "max_pages", None),
     }
@@ -406,10 +409,17 @@ def _mindmap_state(cfg) -> str:
     if not cfg.mindmap_enabled:
         return "关闭（--no-mindmap / [mindmap].enabled=false）"
     from .summarize.mermaid_cli import probe_mmdc
+    from .summarize.mindmap_style import STYLE_LABELS, build_style, normalize_style
 
     mmdc = probe_mmdc(cfg)
+    style = normalize_style(getattr(cfg, "mindmap_style", ""))
+    style_text = f"样式 {style}（{STYLE_LABELS.get(style, style)}）"
+    size = int(getattr(cfg, "mindmap_font_size", 0) or 0)
+    if size <= 0:
+        size = build_style(style).config.get("themeVariables", {}).get("fontSize", "")
+        style_text += f" / {size}" if size else ""
     base = (f"开启（节点上限 {cfg.mindmap_max_nodes} / 深度 {cfg.mindmap_max_depth} / "
-            f"宽 {cfg.mindmap_width}）")
+            f"宽 {cfg.mindmap_width} / {style_text}）")
     if mmdc:
         return f"{base}；mmdc：{mmdc}"
     return (f"{base}；未找到 mmdc：mindmap.mmd 照常生成，PNG 记 failed(dependency_missing)"

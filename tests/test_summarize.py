@@ -32,6 +32,7 @@ from bili_sub_archive.summarize import chunk as ck
 from bili_sub_archive.summarize import llm as llm_mod
 from bili_sub_archive.summarize import mermaid as mm
 from bili_sub_archive.summarize import mermaid_cli as mc
+from bili_sub_archive.summarize import mindmap_style as mst
 from bili_sub_archive.summarize import outline as ol
 from bili_sub_archive.summarize import prompt as pm
 from tests import workspace
@@ -604,6 +605,143 @@ class MermaidCliTest(unittest.TestCase):
         self.assertEqual(mc.probe_mmdc(Config(uid=1, mindmap_mmdc_path=str(self.root / "nope"))),
                          mc.probe_mmdc(None))
 
+    def test_build_argv_passes_style_files(self):
+        argv = mc.build_argv("mmdc", Path("a.mmd"), Path("b.png"), config_file="c.json",
+                             css_file="s.css")
+        self.assertEqual(argv[argv.index("-c") + 1], "c.json")
+        self.assertEqual(argv[argv.index("--cssFile") + 1], "s.css")
+
+    def test_build_argv_without_style_stays_clean(self):
+        """classic（无样式）时命令行必须与改造前逐字一致。"""
+        argv = mc.build_argv("mmdc", Path("a.mmd"), Path("b.png"), width=800,
+                             background="white", puppeteer_config="p.json")
+        self.assertEqual(argv, ["mmdc", "-i", "a.mmd", "-o", "b.png", "-w", "800",
+                                "-b", "white", "-p", "p.json"])
+        self.assertNotIn("-c", argv)
+        self.assertNotIn("--cssFile", argv)
+
+
+# --------------------------------------------------------------------------- #
+# 导图样式预设
+# --------------------------------------------------------------------------- #
+class MindmapStyleTest(unittest.TestCase):
+    def setUp(self):
+        self._ws = workspace()
+        self.root = self._ws.__enter__()
+
+    def tearDown(self):
+        self._ws.__exit__(None, None, None)
+
+    def test_default_is_paper_and_known_set(self):
+        self.assertEqual(mst.DEFAULT_STYLE, "paper")
+        self.assertEqual(mst.STYLE_NAMES, ("paper", "pastel", "dark", "classic"))
+        for name in mst.STYLE_NAMES:
+            self.assertTrue(mst.is_known_style(name))
+            self.assertTrue(mst.STYLE_LABELS[name])
+
+    def test_unknown_style_normalizes_to_default(self):
+        self.assertEqual(mst.normalize_style(""), "paper")
+        self.assertEqual(mst.normalize_style(None), "paper")
+        self.assertEqual(mst.normalize_style("  DARK "), "dark")
+        self.assertEqual(mst.normalize_style("cute"), "paper")
+        self.assertFalse(mst.is_known_style("cute"))
+        self.assertIn("paper", mst.style_choices_text())
+
+    def test_classic_adds_nothing(self):
+        bundle = mst.build_style("classic")
+        self.assertFalse(bundle.styled)
+        self.assertEqual(bundle.config, {})
+        self.assertEqual(bundle.css, "")
+        self.assertEqual(bundle.background, "")
+        with mst.staged_style_files(bundle) as (config_file, css_file):
+            self.assertEqual((config_file, css_file), ("", ""))
+
+    def test_paper_bundle_has_cjk_font_and_no_max_width(self):
+        bundle = mst.build_style("paper")
+        variables = bundle.config["themeVariables"]
+        self.assertEqual(bundle.config["look"], "neo")
+        self.assertEqual(bundle.config["theme"], "base")
+        self.assertIn("Microsoft YaHei", variables["fontFamily"])
+        self.assertEqual(variables["fontSize"], "17px")
+        self.assertFalse(bundle.config["mindmap"]["useMaxWidth"])
+        self.assertEqual(variables["cScale0"], mst.BRANCHES[0]["stroke"])
+        # 12 支调色板：覆盖 cScale0..11，超过 12 个一级分支才会掉回默认配色
+        self.assertEqual(len(mst.BRANCHES), 12)
+        self.assertEqual(variables["cScale11"], mst.BRANCHES[11]["stroke"])
+        self.assertIn("section-11", mst.build_style("paper").css)
+
+    def test_paper_css_paints_white_cards_with_branch_borders(self):
+        css = mst.build_style("paper").css
+        self.assertIn("#ffffff", css)                       # 白底卡片
+        self.assertIn("fill: #ffffff !important", css)
+        self.assertIn(mst.BRANCHES[0]["stroke"], css)       # 分支色描边
+        self.assertIn("stroke: #4c7df0 !important", css)
+        self.assertIn("section-edge-0", css)
+        self.assertIn("section-root", css)
+        self.assertIn("!important", css, "mermaid 生成的规则在 SVG 内部，覆盖必须带权重")
+
+    def test_pastel_fills_nodes_with_palette_colors(self):
+        css = mst.build_style("pastel").css
+        self.assertIn("fill: #e3ecfe !important", css)          # 节点填充 = 调色板柔和色
+        self.assertIn(mst.BRANCHES[0]["fill"], css)
+        # 通用节点块只调描边宽度，不做"全局白底"覆盖（那是 paper 的做法）
+        self.assertIn("#my-svg .mindmap-node path,\n#my-svg .mindmap-node rect,\n"
+                      "#my-svg .mindmap-node circle,\n#my-svg .mindmap-node polygon {\n"
+                      "  stroke-width: 1.6px !important;\n}", css)
+
+    def test_dark_style_uses_dark_background_and_light_text(self):
+        bundle = mst.build_style("dark")
+        self.assertEqual(bundle.background, mst.DARK_BACKGROUND)
+        self.assertEqual(bundle.config["themeVariables"]["background"], mst.DARK_BACKGROUND)
+        self.assertIn(mst.BRANCHES[0]["stroke_dark"], bundle.css)
+        self.assertIn("#e2e8f0", bundle.css)
+
+    def test_font_size_and_family_override_preset(self):
+        bundle = mst.build_style("paper", font_size=22, font_family="思源黑体")
+        self.assertEqual(bundle.config["themeVariables"]["fontSize"], "22px")
+        self.assertEqual(bundle.config["themeVariables"]["fontFamily"], "思源黑体")
+        # 非法字号退回预设默认，不抛异常
+        self.assertEqual(mst.build_style("paper", font_size=-3).config["themeVariables"]["fontSize"],
+                         f"{mst.DEFAULT_FONT_SIZE}px")
+        self.assertEqual(mst.build_style("paper", font_size="x").config["themeVariables"]["fontSize"],
+                         f"{mst.DEFAULT_FONT_SIZE}px")
+
+    def test_resolve_background_prefers_explicit_value(self):
+        dark = mst.build_style("dark")
+        self.assertEqual(mst.resolve_background(dark, "white"), mst.DARK_BACKGROUND)
+        self.assertEqual(mst.resolve_background(dark, ""), mst.DARK_BACKGROUND)
+        self.assertEqual(mst.resolve_background(dark, "transparent"), "transparent")
+        self.assertEqual(mst.resolve_background(dark, "#123456"), "#123456")
+        paper = mst.build_style("paper")
+        self.assertEqual(mst.resolve_background(paper, "white"), "white")
+        self.assertEqual(mst.resolve_background(paper, ""), "white")
+
+    def test_staged_files_are_written_then_cleaned(self):
+        bundle = mst.build_style("paper")
+        with mst.staged_style_files(bundle) as (config_file, css_file):
+            config_path, css_path = Path(config_file), Path(css_file)
+            self.assertTrue(config_path.is_file())
+            self.assertTrue(css_path.is_file())
+            payload = json.loads(config_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["theme"], "base")
+            self.assertIn("#my-svg", css_path.read_text(encoding="utf-8"))
+        self.assertFalse(config_path.exists(), "临时样式文件必须随渲染一起清掉")
+        self.assertFalse(css_path.exists())
+
+    def test_explicit_files_replace_generated_ones(self):
+        mine_config = self.root / "mine.json"
+        mine_css = self.root / "mine.css"
+        with mst.staged_style_files(mst.build_style("paper"), config_file=str(mine_config),
+                                    css_file=str(mine_css)) as (config_file, css_file):
+            self.assertEqual((config_file, css_file), (str(mine_config), str(mine_css)))
+            self.assertFalse(mine_config.exists(), "显式路径指向的文件由用户维护，不该被代写")
+
+    def test_config_json_is_deterministic(self):
+        first = mst.config_json(mst.build_style("paper"))
+        second = mst.config_json(mst.build_style("paper"))
+        self.assertEqual(first, second)
+        self.assertEqual(json.loads(first)["mindmap"]["padding"], 16)
+
 
 # --------------------------------------------------------------------------- #
 # prompt
@@ -917,6 +1055,125 @@ class BuildMindmapTest(unittest.TestCase):
         self.assertIn("mindmap", (self.root / MINDMAP_MMD).read_text(encoding="utf-8"))
         self.assertEqual(created[0][0], str(self.config.mindmap_mmdc_path))
 
+    def test_style_files_are_passed_to_mmdc_and_cleaned(self):
+        """默认（paper）要把生成的配置 JSON 与 CSS 交给 mmdc，渲染完不留临时文件。"""
+        plan = self.plan("## 摘要\n\n内容。\n\n## 大纲\n- 主题：T\n  - A\n")
+        seen: dict = {}
+        inner = fx.fake_mmdc_runner()
+
+        def runner(argv):
+            seen["argv"] = list(argv)
+            config_path = Path(argv[argv.index("-c") + 1])
+            css_path = Path(argv[argv.index("--cssFile") + 1])
+            seen["config"] = json.loads(config_path.read_text(encoding="utf-8"))
+            seen["css"] = css_path.read_text(encoding="utf-8")
+            seen["config_path"] = config_path
+            seen["css_path"] = css_path
+            seen["font"] = seen["config"]["themeVariables"]["fontFamily"]
+            return inner(argv)
+
+        build_mindmap(plan=plan, config=self.config, entry_dir=self.root, title="视频",
+                      mmdc_runner=runner)
+        self.assertEqual(plan.mindmap_status, "done")
+        self.assertEqual(plan.mindmap_style, "paper")
+        self.assertEqual(seen["config"]["mindmap"]["useMaxWidth"], False)
+        self.assertIn("Microsoft YaHei", seen["font"])
+        self.assertIn("section-0", seen["css"])
+        self.assertFalse(seen["config_path"].exists(), "临时配置必须清掉")
+        self.assertFalse(seen["css_path"].exists(), "临时 CSS 必须清掉")
+        # 产物目录里只该有 .mmd/.png，样式文件不落进条目
+        self.assertEqual(sorted(p.name for p in self.root.iterdir()
+                                if p.suffix in {".json", ".css"}), [])
+
+    def test_classic_style_passes_no_style_files(self):
+        plan = self.plan("## 摘要\n\n内容。\n\n## 大纲\n- 主题：T\n  - A\n")
+        created: list = []
+        config = Config(uid=1, mindmap_mmdc_path=self.config.mindmap_mmdc_path,
+                        mindmap_style="classic")
+        build_mindmap(plan=plan, config=config, entry_dir=self.root, title="视频",
+                      mmdc_runner=fx.fake_mmdc_runner(created))
+        self.assertEqual(plan.mindmap_style, "classic")
+        self.assertNotIn("-c", created[0])
+        self.assertNotIn("--cssFile", created[0])
+        self.assertNotIn("style=", (self.root / MINDMAP_MMD).read_text(encoding="utf-8"))
+
+    def test_dark_style_switches_background_unless_user_set_it(self):
+        plan = self.plan("## 摘要\n\n内容。\n\n## 大纲\n- 主题：T\n  - A\n")
+        created: list = []
+        dark = Config(uid=1, mindmap_mmdc_path=self.config.mindmap_mmdc_path,
+                      mindmap_style="dark")
+        build_mindmap(plan=plan, config=dark, entry_dir=self.root, title="视频",
+                      mmdc_runner=fx.fake_mmdc_runner(created))
+        argv = created[0]
+        self.assertEqual(argv[argv.index("-b") + 1], mst.DARK_BACKGROUND)
+
+        plan2 = self.plan("## 摘要\n\n内容。\n\n## 大纲\n- 主题：T\n  - A\n")
+        explicit = Config(uid=1, mindmap_mmdc_path=self.config.mindmap_mmdc_path,
+                          mindmap_style="dark", mindmap_background="#ffffff")
+        build_mindmap(plan=plan2, config=explicit, entry_dir=self.root, title="视频",
+                      mmdc_runner=fx.fake_mmdc_runner(created))
+        argv = created[-1]
+        self.assertEqual(argv[argv.index("-b") + 1], "#ffffff", "显式背景必须优先")
+
+    def test_custom_style_files_are_used_as_given(self):
+        mine_config = self.root / "mine.json"
+        mine_css = self.root / "mine.css"
+        mine_config.write_text('{"theme": "forest"}', encoding="utf-8")
+        mine_css.write_text("/* mine */", encoding="utf-8")
+        plan = self.plan("## 摘要\n\n内容。\n\n## 大纲\n- 主题：T\n  - A\n")
+        created: list = []
+        config = Config(uid=1, mindmap_mmdc_path=self.config.mindmap_mmdc_path,
+                        mindmap_config_file=str(mine_config), mindmap_css_file=str(mine_css))
+        build_mindmap(plan=plan, config=config, entry_dir=self.root, title="视频",
+                      mmdc_runner=fx.fake_mmdc_runner(created))
+        argv = created[0]
+        self.assertEqual(argv[argv.index("-c") + 1], str(mine_config))
+        self.assertEqual(argv[argv.index("--cssFile") + 1], str(mine_css))
+        self.assertTrue(mine_config.is_file(), "用户文件不该被清理")
+
+    def test_metadata_records_style(self):
+        plan = self.plan("## 摘要\n\n内容。\n\n## 大纲\n- 主题：T\n  - A\n")
+        build_mindmap(plan=plan, config=self.config, entry_dir=self.root, title="视频",
+                      mmdc_runner=fx.fake_mmdc_runner())
+        payload = plan.to_json()["mindmap"]
+        self.assertEqual(payload["style"], "paper")
+        self.assertIn("样式 浅色卡片", plan.mindmap_line())
+        self.assertEqual(SummaryPlan.from_json({"mindmap": payload}).mindmap_style, "paper")
+
+    def test_unknown_style_renders_default_and_notes_it(self):
+        plan = self.plan("## 摘要\n\n内容。\n\n## 大纲\n- 主题：T\n  - A\n")
+        created: list = []
+        config = Config(uid=1, mindmap_mmdc_path=self.config.mindmap_mmdc_path,
+                        mindmap_style="cute")
+        build_mindmap(plan=plan, config=config, entry_dir=self.root, title="视频",
+                      mmdc_runner=fx.fake_mmdc_runner(created))
+        self.assertEqual(plan.mindmap_style, "paper")
+        self.assertTrue(any("cute" in note for note in plan.notes), plan.notes)
+        self.assertIn("-c", created[0])
+
+    def test_style_does_not_leak_into_mmd_source(self):
+        """同一棵大纲在不同样式下必须产出逐字节相同的 .mmd（样式只属于渲染）。"""
+        body = "## 摘要\n\n内容。\n\n## 大纲\n- 主题：T\n  - A\n    - B\n"
+        first_dir = self.root / "first"
+        second_dir = self.root / "second"
+        for directory, style in ((first_dir, "paper"), (second_dir, "classic")):
+            build_mindmap(plan=self.plan(body),
+                          config=Config(uid=1, mindmap_style=style),
+                          entry_dir=directory, title="视频",
+                          mmdc_runner=fx.fake_mmdc_runner())
+        self.assertEqual((first_dir / MINDMAP_MMD).read_bytes(),
+                         (second_dir / MINDMAP_MMD).read_bytes())
+
+    def test_style_is_part_of_signature(self):
+        base = mindmap_signature(self.config, "sig123")
+        for changed in (Config(uid=1, mindmap_style="dark"),
+                        Config(uid=1, mindmap_font_size=22),
+                        Config(uid=1, mindmap_font_family="思源黑体"),
+                        Config(uid=1, mindmap_config_file="a.json"),
+                        Config(uid=1, mindmap_css_file="a.css"),
+                        Config(uid=1, mindmap_background="transparent")):
+            self.assertNotEqual(base, mindmap_signature(changed, "sig123"))
+
     def test_derived_outline_when_model_ignores_format(self):
         plan = self.plan("## 摘要\n\n第一句结论。后面还有。\n\n第二句结论。\n")
         build_mindmap(plan=plan, config=self.config, entry_dir=self.root, title="视频",
@@ -944,6 +1201,26 @@ class BuildMindmapTest(unittest.TestCase):
         self.assertEqual(plan.mindmap_status, "failed")
         self.assertIn("上游总结未完成", plan.mindmap_message)
         self.assertFalse((self.root / MINDMAP_MMD).exists())
+
+    def test_success_clears_previous_failure_reason(self):
+        """补做成功：上一次失败的 reason/error_kind 必须清掉。
+
+        否则 retry 后 metadata 里会出现 status=done 与 reason=render_failed
+        并存的矛盾（按 reason 判断的人会误报"导图未完成"）。
+        """
+        plan = self.plan("## 摘要\n\n内容。\n\n## 大纲\n- 主题：T\n  - A\n")
+        plan.mindmap_status = "failed"
+        plan.mindmap_reason = "render_failed"
+        plan.mindmap_error_kind = "render_failed"
+        build_mindmap(plan=plan, config=self.config, entry_dir=self.root, title="视频",
+                      mmdc_runner=fx.fake_mmdc_runner())
+        self.assertEqual(plan.mindmap_status, "done")
+        self.assertEqual(plan.mindmap_reason, "")
+        self.assertEqual(plan.mindmap_error_kind, "")
+        serialized = plan.to_json()["mindmap"]
+        self.assertEqual(serialized["status"], "done")
+        self.assertEqual(serialized["reason"], "")
+        self.assertEqual(serialized["error_kind"], "")
 
     def test_render_failure_keeps_mmd(self):
         plan = self.plan("## 摘要\n\n内容。\n\n## 大纲\n- 主题：T\n  - A\n")

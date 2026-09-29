@@ -101,6 +101,11 @@ FIELD_TO_TEMPLATE: dict[str, tuple[str, str]] = {
     "mindmap_label_chars": ("mindmap", "label_chars"),
     "mindmap_width": ("mindmap", "width"),
     "mindmap_background": ("mindmap", "background"),
+    "mindmap_style": ("mindmap", "style"),
+    "mindmap_font_size": ("mindmap", "font_size"),
+    "mindmap_font_family": ("mindmap", "font_family"),
+    "mindmap_config_file": ("mindmap", "config_file"),
+    "mindmap_css_file": ("mindmap", "css_file"),
     "mindmap_timeout_seconds": ("mindmap", "timeout_seconds"),
     "lock_stale_hours": ("storage", "lock_stale_hours"),
 }
@@ -328,9 +333,11 @@ class CliSurfaceTest(unittest.TestCase):
         args = build_parser().parse_args(
             ["retry", "--uid", "1", "--steps", "mindmap,transcript",
              "--mmdc", "C:/npm/mmdc.cmd", "--asr", "--no-subtitle",
-             "--summary-model", "m", "--summary-base-url", "https://api.example.com/v1"])
+             "--summary-model", "m", "--summary-base-url", "https://api.example.com/v1",
+             "--mindmap-style", "dark"])
         self.assertEqual(args.steps, "mindmap,transcript")
         self.assertEqual(args.mindmap_mmdc_path, "C:/npm/mmdc.cmd")
+        self.assertEqual(args.mindmap_style, "dark")
         self.assertTrue(args.asr_enabled)
         self.assertFalse(args.prefer_subtitle)
         self.assertEqual(args.summary_model, "m")

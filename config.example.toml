@@ -141,9 +141,23 @@ enabled = true
 max_nodes = 60
 max_depth = 3
 label_chars = 24
-# PNG 宽度与背景色
+# PNG 宽度与背景色（宽度是"画布最小宽度"：宽导图按内容自然宽度出图，不再被压扁成小字）
 width = 1600
 background = "white"
+# 渲染样式（只影响 PNG 观感；mindmap.mmd 是确定性源文件，永远不含样式）：
+#   paper   浅色卡片：白底圆角 + 分支色描边 + 中文字体栈（默认）
+#   pastel  柔和实色块：经典 mindmap 形状 + 柔和配色 + 深色文字
+#   dark    深色底（#0f172a）；background 保持 white 时会自动换成深色底
+#   classic 不加任何样式，等同改造前的 mermaid 默认观感
+# 换样式只让 mindmap 这一步重渲染 PNG，不会重新调用模型（总结指纹未变）。
+style = "paper"
+# 字号（像素）：注释掉或 0 = 用预设默认（17）
+# font_size = 17
+# 字体栈：留空 = 预设的中文字体栈（微软雅黑 → 苹方 → 思源黑体 → sans-serif）
+# font_family = "Microsoft YaHei UI, Microsoft YaHei, PingFang SC, sans-serif"
+# 自定义样式（给了哪一项就用它整份替换预设生成的那份；相对路径按配置文件目录解析）：
+# config_file = "mindmap-theme.json"   # Mermaid 配置 JSON（theme / themeVariables / mindmap 选项）
+# css_file = "mindmap.css"             # 注入页面的 CSS（节点圆角、阴影、连线粗细…）
 timeout_seconds = 120
 # 需要给 puppeteer 传额外配置时指定 json 文件（也可用于容器里加 --no-sandbox）。
 # mmdc 的 puppeteer 找不到浏览器（报 Could not find Chrome / node.launch）时两条路：

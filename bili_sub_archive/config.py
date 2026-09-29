@@ -50,7 +50,8 @@ SECTION_KEYS: dict[str, frozenset[str]] = {
                           "prompt_file", "chunk_chars", "max_chunks", "overlap_chars", "temperature",
                           "max_tokens", "timeout_seconds", "retries", "min_chars"}),
     "mindmap": frozenset({"enabled", "mmdc_path", "puppeteer_config", "max_nodes", "max_depth",
-                          "label_chars", "width", "background", "timeout_seconds"}),
+                          "label_chars", "width", "background", "timeout_seconds", "style",
+                          "font_size", "font_family", "config_file", "css_file"}),
     "storage": frozenset({"lock_stale_hours"}),
 }
 
@@ -136,6 +137,15 @@ class Config:
     mindmap_label_chars: int = 24
     mindmap_width: int = 1600
     mindmap_background: str = "white"
+    #: 渲染样式：paper（默认，浅色卡片）/ pastel / dark / classic；空 = 内置默认
+    mindmap_style: str = ""
+    #: 字号（0 = 用预设默认；仅对非 classic 样式生效）
+    mindmap_font_size: int = 0
+    #: 字体栈（空 = 预设的中文字体栈）
+    mindmap_font_family: str = ""
+    #: 自定义 Mermaid 配置 JSON / 页面 CSS：给了就整份替换预设生成的那一份
+    mindmap_config_file: str = ""
+    mindmap_css_file: str = ""
     mindmap_timeout_seconds: float = 120.0
     # 存储
     lock_stale_hours: float = 6.0
@@ -389,6 +399,15 @@ def _apply_toml(cfg: Config, data: dict, root: Path) -> None:
         cfg.mindmap_label_chars = _get_int(mindmap, "label_chars", cfg.mindmap_label_chars, minimum=2)
         cfg.mindmap_width = _get_int(mindmap, "width", cfg.mindmap_width, minimum=200)
         cfg.mindmap_background = _get_str(mindmap, "background", cfg.mindmap_background)
+        cfg.mindmap_style = _get_str(mindmap, "style", cfg.mindmap_style)
+        cfg.mindmap_font_size = _get_int(mindmap, "font_size", cfg.mindmap_font_size, minimum=0)
+        cfg.mindmap_font_family = _get_str(mindmap, "font_family", cfg.mindmap_font_family)
+        # 自定义配置/CSS 与 prompt、puppeteer 配置同规格：相对路径按配置文件所在目录解析
+        for key, attr in (("config_file", "mindmap_config_file"), ("css_file", "mindmap_css_file")):
+            raw_path = _get_str(mindmap, key, getattr(cfg, attr))
+            if raw_path:
+                candidate = Path(raw_path).expanduser()
+                setattr(cfg, attr, str(candidate if candidate.is_absolute() else root / candidate))
         cfg.mindmap_timeout_seconds = _get_float(mindmap, "timeout_seconds",
                                                  cfg.mindmap_timeout_seconds, minimum=1.0)
     if storage:
@@ -427,6 +446,9 @@ def _apply_overrides(cfg: Config, overrides: dict) -> None:
         "mindmap_label_chars": ("mindmap_label_chars", int),
         "mindmap_background": ("mindmap_background", str),
         "mindmap_width": ("mindmap_width", int),
+        "mindmap_style": ("mindmap_style", str),
+        "mindmap_font_size": ("mindmap_font_size", int),
+        "mindmap_font_family": ("mindmap_font_family", str),
         "mindmap_timeout_seconds": ("mindmap_timeout_seconds", float),
     }
     for key, (attr, cast) in simple.items():
@@ -469,7 +491,8 @@ def _apply_overrides(cfg: Config, overrides: dict) -> None:
                 f"未知内容类型：{', '.join(sorted(unknown))}（可选 {', '.join(ALL_KINDS)}）"
             )
         cfg.kinds = {kind: (kind in selected) for kind in ALL_KINDS}
-    for key in ("summary_base_url", "summary_model", "summary_prompt_file", "summary_client"):
+    for key in ("summary_base_url", "summary_model", "summary_prompt_file", "summary_client",
+                "mindmap_style"):
         if overrides.get(key):
             setattr(cfg, key, str(overrides[key]).strip())
 
@@ -526,8 +549,9 @@ def _validate(cfg: Config) -> None:
 
 
 def _validate_summary(cfg: Config) -> None:
-    """总结/导图相关配置：取值合法 + 自定义 prompt 文件真的可用（阶段 3）。"""
+    """总结/导图相关配置：取值合法 + 自定义 prompt / 样式文件真的可用（阶段 3）。"""
     from .summarize.llm import CLIENT_MODES
+    from .summarize.mindmap_style import is_known_style, style_choices_text
     from .summarize.prompt import PromptError, load_prompt_spec
 
     if cfg.summary_client not in CLIENT_MODES:
@@ -544,6 +568,14 @@ def _validate_summary(cfg: Config) -> None:
             raise ConfigError(
                 f"[summary] base_url 必须以 http:// 或 https:// 开头，收到 {cfg.summary_base_url!r}"
             )
+    # 样式名拼错必须当场报错（否则会静默退回默认，用户以为"改了没效果"）
+    if cfg.mindmap_style and not is_known_style(cfg.mindmap_style):
+        raise ConfigError(
+            f"[mindmap] style 取值非法：{cfg.mindmap_style!r}（可选 {style_choices_text()}）"
+        )
+    for key, path in (("config_file", cfg.mindmap_config_file), ("css_file", cfg.mindmap_css_file)):
+        if path and not Path(path).is_file():
+            cfg.warnings.append(f"[mindmap] {key} 不存在：{path}（渲染会失败，请检查路径）")
 
 
 @dataclass

@@ -334,5 +334,74 @@ class ConfigWarningSurfacingTest(ConfigTestBase):
         self.assertEqual(len(summary.warnings), before)
 
 
+class MindmapStyleConfigTest(ConfigTestBase):
+    """导图样式配置：取值校验、路径解析、命令行覆盖（样式是"改了就该重渲染"的输入）。"""
+
+    def test_style_defaults_to_empty_meaning_builtin(self):
+        cfg = load_config(root=self.root, overrides={"uid": 1}).config
+        self.assertEqual(cfg.mindmap_style, "")
+        from bili_sub_archive.summarize.mindmap_style import DEFAULT_STYLE
+        self.assertEqual(DEFAULT_STYLE, "paper")
+
+    def test_style_and_font_are_loaded_from_toml(self):
+        self.write("config.toml", """
+[account]
+uid = 7
+
+[mindmap]
+style = "dark"
+font_size = 21
+font_family = "Source Han Sans SC"
+""")
+        cfg = load_config(root=self.root).config
+        self.assertEqual(cfg.mindmap_style, "dark")
+        self.assertEqual(cfg.mindmap_font_size, 21)
+        self.assertEqual(cfg.mindmap_font_family, "Source Han Sans SC")
+
+    def test_unknown_style_is_config_error(self):
+        self.write("config.toml", '[account]\nuid = 7\n\n[mindmap]\nstyle = "cute"\n')
+        with self.assertRaises(ConfigError) as ctx:
+            load_config(root=self.root)
+        self.assertIn("style", str(ctx.exception))
+        self.assertIn("paper", str(ctx.exception))
+
+    def test_custom_style_files_resolve_relative_to_config(self):
+        self.write("mine.json", "{}")
+        self.write("mine.css", "/* x */")
+        self.write("config.toml", """
+[account]
+uid = 7
+
+[mindmap]
+style = "paper"
+config_file = "mine.json"
+css_file = "mine.css"
+""")
+        cfg = load_config(root=self.root).config
+        self.assertEqual(cfg.mindmap_config_file, str(self.root / "mine.json"))
+        self.assertEqual(cfg.mindmap_css_file, str(self.root / "mine.css"))
+        self.assertEqual(cfg.warnings, [], "文件存在时不该有告警")
+
+    def test_missing_style_file_warns(self):
+        self.write("config.toml", """
+[account]
+uid = 7
+
+[mindmap]
+css_file = "nope.css"
+""")
+        cfg = load_config(root=self.root).config
+        self.assertTrue(any("nope.css" in w for w in cfg.warnings), cfg.warnings)
+
+    def test_cli_override_style_wins_and_is_trimmed(self):
+        cfg = load_config(root=self.root,
+                          overrides={"uid": 7, "mindmap_style": " pastel "}).config
+        self.assertEqual(cfg.mindmap_style, "pastel")
+
+    def test_cli_override_style_is_validated(self):
+        with self.assertRaises(ConfigError):
+            load_config(root=self.root, overrides={"uid": 7, "mindmap_style": "cute"})
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

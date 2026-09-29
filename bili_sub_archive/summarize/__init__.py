@@ -11,6 +11,7 @@ transcript.txt（阶段 2 产物，按 P 分节）
   → 大纲解析（outline.py：深度、节点数、标签长度都设上限）
   → mindmap.mmd（mermaid.py：确定性序列化 + 全角转义）
   → mindmap.png（mermaid_cli.py：mmdc 渲染 + PNG 头校验；失败保留 .mmd 可重试）
+    样式由 mindmap_style.py 提供（预设 → Mermaid 配置 JSON + CSS，渲染期临时文件，不进 .mmd）
 ```
 
 关键取舍：
@@ -37,6 +38,8 @@ from .chunk import ChunkPlan, format_points, split_header, split_transcript
 from .llm import KIND_LLM_INVALID, ChatClient, ChatResult, LlmUnavailable, build_chat_client
 from .mermaid import MMD_NAME, MermaidResult, to_mermaid
 from .mermaid_cli import PNG_NAME, RenderOutcome, probe_mmdc, render_mindmap
+from .mindmap_style import (DEFAULT_STYLE, STYLE_LABELS, build_style, normalize_style,
+                            resolve_background, staged_style_files)
 from .outline import OutlineNode, derive_outline, extract_outline
 from .prompt import PromptError, PromptSpec, load_prompt_spec
 
@@ -113,6 +116,7 @@ class SummaryPlan:
     mindmap_message: str = ""
     mindmap_mmd: str = ""
     mindmap_png: str = ""
+    mindmap_style: str = ""
     mindmap_signature: str = ""
     mindmap_nodes: int = 0
     mindmap_width: int = 0
@@ -152,6 +156,7 @@ class SummaryPlan:
                 "message": self.mindmap_message,
                 "mmd": self.mindmap_mmd,
                 "png": self.mindmap_png,
+                "style": self.mindmap_style,
                 "signature": self.mindmap_signature,
                 "nodes": self.mindmap_nodes,
                 "width": self.mindmap_width,
@@ -203,6 +208,7 @@ class SummaryPlan:
             mindmap_message=str(mind.get("message") or ""),
             mindmap_mmd=str(mind.get("mmd") or ""),
             mindmap_png=str(mind.get("png") or ""),
+            mindmap_style=str(mind.get("style") or ""),
             mindmap_signature=str(mind.get("signature") or ""),
             mindmap_nodes=int(mind.get("nodes") or 0),
             mindmap_width=int(mind.get("width") or 0),
@@ -228,8 +234,10 @@ class SummaryPlan:
         if self.mindmap_status != "done":
             return f"导图未完成（{self.mindmap_reason or self.mindmap_status}）"
         size = f"{self.mindmap_width}×{self.mindmap_height}" if self.mindmap_width else "已渲染"
+        style = STYLE_LABELS.get(self.mindmap_style, self.mindmap_style)
+        style_part = f"，样式 {style}" if style else ""
         return (f"导图 {self.mindmap_nodes} 节点 / {self.outline_depth} 层，PNG {size}"
-                f"（{self.mindmap_bytes / 1024:.1f} KiB）")
+                f"（{self.mindmap_bytes / 1024:.1f} KiB{style_part}）")
 
 
 # --------------------------------------------------------------------------- #
@@ -259,7 +267,21 @@ def summary_signature(config, spec: PromptSpec, transcript_text: str) -> str:
     return hashlib.sha256(blob).hexdigest()[:12]
 
 
+def mindmap_style_of(config) -> str:
+    """当前配置实际生效的导图样式名。
+
+    配置校验（``config._validate_summary``）已经拦下拼错的值，这里只做规整：
+    复用已有导图（不重新渲染）时也用它把样式如实记进 metadata。
+    """
+    return normalize_style(getattr(config, "mindmap_style", "") or DEFAULT_STYLE)
+
+
 def mindmap_signature(config, summary_sig: str) -> str:
+    """导图的"输入指纹"。
+
+    样式（``style`` / 字号 / 字体 / 自定义配置与 CSS）也算输入：改了样式就该重新渲染 PNG，
+    但它**不影响总结**——所以换样式只会让 ``mindmap`` 步骤重做，不会再花一次模型的钱。
+    """
     payload = {
         "summary": summary_sig,
         "max_nodes": int(getattr(config, "mindmap_max_nodes", 60) or 60),
@@ -267,6 +289,11 @@ def mindmap_signature(config, summary_sig: str) -> str:
         "label_chars": int(getattr(config, "mindmap_label_chars", 24) or 24),
         "width": int(getattr(config, "mindmap_width", 1600) or 1600),
         "background": str(getattr(config, "mindmap_background", "white") or ""),
+        "style": normalize_style(getattr(config, "mindmap_style", "")),
+        "font_size": int(getattr(config, "mindmap_font_size", 0) or 0),
+        "font_family": str(getattr(config, "mindmap_font_family", "") or ""),
+        "config_file": str(getattr(config, "mindmap_config_file", "") or ""),
+        "css_file": str(getattr(config, "mindmap_css_file", "") or ""),
     }
     blob = repr(sorted(payload.items())).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()[:12]
@@ -622,20 +649,43 @@ def build_mindmap(
     plan.mindmap_nodes = result.nodes
     plan.mindmap_signature = mindmap_signature(config, plan.signature)
 
+    # ---- 样式：预设 → 临时配置文件 → mmdc（.mmd 保持确定性，样式不进源文件） ---- #
+    raw_style = str(getattr(config, "mindmap_style", "") or "").strip()
+    style_name = mindmap_style_of(config)
+    bundle = build_style(style_name,
+                         font_size=int(getattr(config, "mindmap_font_size", 0) or 0),
+                         font_family=str(getattr(config, "mindmap_font_family", "") or ""))
+    plan.mindmap_style = bundle.name
+    if raw_style and raw_style.lower() != bundle.name:
+        # 正常路径上 config 校验已经拦下拼错的值；这里兜底，避免静默"改了没效果"
+        plan.notes.append(f"[mindmap] style={raw_style} 不是内置样式，已按 {bundle.name} 渲染")
+    background = resolve_background(bundle, str(getattr(config, "mindmap_background", "") or ""))
+
     mmdc = probe_mmdc(config)
-    outcome: RenderOutcome = render_mindmap(
-        mmd_path=entry_dir / MINDMAP_MMD,
-        png_path=entry_dir / MINDMAP_PNG,
-        mmdc=mmdc,
-        width=int(getattr(config, "mindmap_width", 1600) or 1600),
-        background=str(getattr(config, "mindmap_background", "white") or "white"),
-        timeout=float(getattr(config, "mindmap_timeout_seconds", 120.0) or 120.0),
-        puppeteer_config=str(getattr(config, "mindmap_puppeteer_config", "") or ""),
-        runner=mmdc_runner,
-        logger=logger,
-    )
+    with staged_style_files(
+        bundle,
+        config_file=str(getattr(config, "mindmap_config_file", "") or ""),
+        css_file=str(getattr(config, "mindmap_css_file", "") or ""),
+    ) as (config_file, css_file):
+        outcome: RenderOutcome = render_mindmap(
+            mmd_path=entry_dir / MINDMAP_MMD,
+            png_path=entry_dir / MINDMAP_PNG,
+            mmdc=mmdc,
+            width=int(getattr(config, "mindmap_width", 1600) or 1600),
+            background=background,
+            timeout=float(getattr(config, "mindmap_timeout_seconds", 120.0) or 120.0),
+            puppeteer_config=str(getattr(config, "mindmap_puppeteer_config", "") or ""),
+            config_file=config_file,
+            css_file=css_file,
+            runner=mmdc_runner,
+            logger=logger,
+        )
     if outcome.ok:
         plan.mindmap_status = "done"
+        # 补做成功：清掉上一次失败留下的 reason/error_kind，
+        # 否则 metadata 里会出现 status=done 与 reason=render_failed 并存的矛盾。
+        plan.mindmap_reason = ""
+        plan.mindmap_error_kind = ""
         plan.mindmap_png = MINDMAP_PNG
         plan.mindmap_width = outcome.width
         plan.mindmap_height = outcome.height
@@ -674,6 +724,7 @@ __all__ = [
     "build_mindmap",
     "build_summary",
     "mindmap_signature",
+    "mindmap_style_of",
     "read_summary_body",
     "summary_signature",
     "transcript_digest",

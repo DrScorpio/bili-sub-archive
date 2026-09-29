@@ -379,6 +379,7 @@ def _archive_stage3(ctx, item, entry, transcript_plan):
         build_mindmap,
         build_summary,
         mindmap_signature,
+        mindmap_style_of,
         read_summary_body,
         summary_signature,
     )
@@ -463,9 +464,13 @@ def _archive_stage3(ctx, item, entry, transcript_plan):
                 and (entry_dir / MINDMAP_PNG).is_file())
     if mm_reuse:
         plan.mindmap_status = "done"
+        plan.mindmap_reason = ""
+        plan.mindmap_error_kind = ""
         plan.mindmap_reused = True
         plan.mindmap_mmd = MINDMAP_MMD
         plan.mindmap_png = MINDMAP_PNG
+        # 指纹一致 ⇒ 样式一定没变；复用时不重新渲染，但 metadata 仍要如实记下用的是哪套样式
+        plan.mindmap_style = mindmap_style_of(cfg)
         notes.append("思维导图沿用已有产物（输入指纹未变，未重复渲染）")
     else:
         plan = build_mindmap(plan=plan, config=cfg, entry_dir=entry_dir,

@@ -229,7 +229,7 @@ api_key = "sk-..."        # 环境变量 BSA_LLM_API_KEY / OPENAI_API_KEY 优先
 | `[asr]` | `enabled` / `model` | `false` / `small` | 本地转写开关（关闭时不跑识别） |
 | `[render]` | `width` / `max_height` | `1080` / `20000` | 动态长图；超过高度上限会**明确告警**，不静默截断 |
 | `[summary]` | `enabled` / `base_url` / `model` / `api_key` / `chunk_chars` / `max_chunks` | `true` / 空 / 空 / 空 / `6000` / `40` | 端点留空 = 未配置，记 `skipped(llm_not_configured)`；`api_key` 只填在 `config.local.toml`（或走环境变量），本地端点留空 |
-| `[mindmap]` | `enabled` / `max_nodes` / `max_depth` / `label_chars` | `true` / `60` / `3` / `24` | 受控大纲上限 |
+| `[mindmap]` | `enabled` / `max_nodes` / `max_depth` / `label_chars` / `style` / `width` | `true` / `60` / `3` / `24` / `paper` / `1600` | 受控大纲上限；`style` 决定 `mindmap.png` 观感（可选 `paper` / `pastel` / `dark` / `classic`，见 [5.7 导图样式](#57-导图样式png-观感)）；`width` 是画布最小宽度，宽导图按内容自然宽度出图 |
 | `[storage]` | `lock_stale_hours` | `6` | 上次运行被强杀后写锁可自动抢占的时长 |
 
 全部键与注释见 [config.example.toml](config.example.toml)。
@@ -373,6 +373,53 @@ bsa sync --uid 1039025435 --latest 20 --no-progress   # 关掉进度条
 - 重定向与管道输出统一为 **UTF-8**（`errors="replace"`）：不会因为 `✔` 这类符号在
   cp936 下把整次运行打断。
 
+### 5.7 导图样式（PNG 观感）
+
+`mindmap.png` 的观感由 `[mindmap] style` 决定。`mindmap.mmd` 保持**不含样式**的确定性源文件
+（同一棵大纲永远同一份文件；拿去 mermaid 编辑器渲染不带本项目配色，这是有意为之）。
+
+| `style` | 观感 |
+| --- | --- |
+| `paper`（默认） | 浅色卡片：白底圆角 + 分支色描边 + 细彩色连线 + 中文字体栈（微软雅黑 → 苹方 → 思源黑体 → sans-serif） |
+| `pastel` | 柔和实色块：经典 mindmap 形状 + 柔和配色 + 深色文字 |
+| `dark` | 深色底（`background` 保持默认 `white` 时自动换成 `#0f172a`）+ 亮色描边 |
+| `classic` | 不加任何样式：等同改造前的 mermaid 默认观感 |
+
+```powershell
+bsa retry --uid 1039025435 --steps mindmap --mindmap-style dark   # 换样式 = 只重渲染 PNG
+```
+
+```toml
+[mindmap]
+style = "paper"
+font_size = 18        # 注释掉或 0 = 预设默认（17）
+# font_family = "Microsoft YaHei UI, Microsoft YaHei, PingFang SC, sans-serif"
+```
+
+- **换样式不再花模型的钱**：`style` / `font_size` / `font_family` / 下面两个自定义文件都属于
+  `mindmap` 步骤的输入指纹，改了只重渲染 PNG（`retry --steps mindmap`），总结照旧复用。
+- **宽导图不再被压扁**：预设关掉了 mermaid 的"缩放到容器宽度"（`useMaxWidth=false`），
+  `width` 变成"画布最小宽度"——60 节点实测出图 `2301×1114`，旧观感被压到 `1584×804`，
+  文字小一圈。想回到固定宽度就用 `style = "classic"`。
+- **配色覆盖前 12 个一级分支**（`cScale0..11`）；一级分支超过 12 个时，多出来的分支用
+  mermaid 默认配色（`max_nodes` 默认 60，正常大纲远到不了）。
+- **完全自定义**：`config_file` 传 Mermaid 配置 JSON（`theme` / `themeVariables` / `mindmap`），
+  `css_file` 传注入页面的 CSS（节点圆角、阴影、连线粗细……）。给了哪一项就用它**整份替换**
+  预设生成的那一份，相对路径按配置文件所在目录解析：
+
+```toml
+[mindmap]
+style = "classic"                  # 不要内置配色
+config_file = "mindmap-theme.json" # {"theme": "forest", ...}
+css_file = "mindmap.css"           # #my-svg .section-0 path { stroke: #4c7df0 !important; }
+```
+
+  内置 CSS 就是现成的改色模板（打印当前注入的那一份）：
+  `python -c "from bili_sub_archive.summarize.mindmap_style import build_style; print(build_style('paper').css)"`。
+
+样式文件只在渲染期写成临时文件，**不会落进条目目录**；条目 `metadata.json` 的
+`extra.summary.mindmap.style` 记录本次用的样式，`check` 报告里也会显示当前样式。
+
 ---
 
 ## 6. 输出结构
@@ -476,6 +523,9 @@ output/
 | `render` 记 `failed(dependency_missing)` | 缺 Pillow。`pip install ".[media]"` 后 `retry --steps render` |
 | `mindmap` 记 `failed(dependency_missing)` | 缺 `mmdc`。装 Node.js + mermaid-cli，或用 `--mmdc <路径>`；`.mmd` 已在手 |
 | `mindmap` 记 `failed(render_failed)`，mmdc 报 `Could not find Chrome` / `node.launch` | mermaid-cli 的 puppeteer 没装到 Chromium（官方下载源被网络阻断时常见）。两条路：① 装浏览器——`cd "$env:APPDATA\npm\node_modules\@mermaid-js\mermaid-cli"` 后 `npx puppeteer browsers install chrome --base-url https://cdn.npmmirror.com/binaries/chrome-for-testing`；② 免下载——写一个 puppeteer 配置指向系统已装的 Edge/Chrome（`{"executablePath": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"}`），再把 `[mindmap] puppeteer_config` 指过去，然后 `retry --steps mindmap` |
+| 改了 `[mindmap] style` 但 PNG 还是旧观感 | 样式属于导图输入指纹，必须重跑这一步：`retry --uid <UID> --steps mindmap`（`sync` 也会自动重做）。回默认观感用 `style = "classic"` |
+| 导图 PNG 比 `[mindmap] width` 宽 | 这是预设的有意行为：关掉缩放后宽导图按内容自然宽度出图，文字更大；要固定宽度用 `style = "classic"` |
+| 导图 PNG 中文字体不对／成方块 | 预设字体栈是 `微软雅黑 → 苹方 → 思源黑体 → sans-serif`，本机都没有时用 `[mindmap] font_family` 指一份已装字体（如 `"Noto Sans SC"`），再 `retry --steps mindmap` |
 | `summary` 记 `skipped(llm_not_configured)` | 没配端点/模型。填 `[summary] base_url` 与 `model`（或环境变量）后 `retry --steps summary,mindmap` |
 | `summary` 记 `failed(llm_auth_error)` | 密钥无效或服务端要求鉴权；检查 `BSA_LLM_API_KEY` |
 | `summary` 记 `failed(llm_response_invalid)`，说明"模型返回内容为空" | 推理模型（如 `deepseek-v4-flash`）的思考 token 也算进 `max_tokens`，2048 会在写完正文前用光。把 `[summary] max_tokens` 提到 8192（或换非推理模型）后 `retry --steps summary,mindmap` |
@@ -496,7 +546,7 @@ output/
 python -m unittest discover -s tests -t .
 ```
 
-当前基线：**473 项用例全部通过**。其中 1 项（`test_render_wiring.py` 的真实响应渲染）
+当前基线：**503 项用例全部通过**。其中 1 项（`test_render_wiring.py` 的真实响应渲染）
 依赖 `docs/archive/stage0-evidence/` 里的脱敏样本，该目录按 `.gitignore` 不入库，
 缺失时自动跳过（输出里的 `s`）。
 
@@ -504,15 +554,15 @@ python -m unittest discover -s tests -t .
 
 | 模块 | 用例 | 锁什么 |
 | --- | --- | --- |
-| `tests/test_delivery.py` | 32 | 交付契约：`config.example.toml` 覆盖全部配置字段、README 用到的开关都真实存在、README 相对链接可解析、版本号在 `pyproject.toml` 与 `bili_sub_archive.__version__` 之间一致、退出码映射稳定、仓库无真实凭据、`.gitignore` 覆盖凭据与产物 |
+| `tests/test_delivery.py` | 32 | 交付契约：`config.example.toml` 覆盖全部配置字段（含 `[mindmap]` 样式项）、README 用到的开关都真实存在、README 相对链接可解析、版本号在 `pyproject.toml` 与 `bili_sub_archive.__version__` 之间一致、退出码映射稳定、仓库无真实凭据、`.gitignore` 覆盖凭据与产物 |
 | `tests/test_offline_flow.py` | 47 | 端到端编排：发现 → 筛选 → 归档 → 索引/状态 → 重跑不重复 → `retry` 补做（模型、ffmpeg、mmdc 全部注入替身） |
-| `tests/test_summarize.py` | 92 | 总结与导图单元：分块、受控大纲、prompt 三种写法、LLM 客户端（SDK/标准库/替身）、mmdc 调用、指纹与重做 |
+| `tests/test_summarize.py` | 115 | 总结与导图单元：分块、受控大纲、prompt 三种写法、LLM 客户端（SDK/标准库/替身）、导图样式预设（配置 JSON + CSS + 背景优先级 + 样式不进 `.mmd`）、mmdc 调用、指纹与重做 |
 | `tests/test_transcript.py` | 53 | 文字稿：平台字幕解析、SRT/纯文本序列化、ASR 兜底、跨 P 合并与来源标注 |
 | `tests/test_ui.py` | 37 | 终端呈现层：能力判定（`--color`/`NO_COLOR`）、非 TTY 不写 ANSI、rich 缺失或渲染失败时降级、进度句柄 no-op、方括号不被 rich 当样式标签吞掉、CLI 程序名与旧命令名提示 |
 | `tests/test_parse.py` | 35 | 响应解析：富文本与段落类型、两种 `modules` 形状、统一 Item 输出、充电权限判定 |
 | `tests/test_media.py` | 29 | 媒体下载：格式选择、错误分类、产物校验、并发/续传/补做 |
 | `tests/test_render.py` | 28 | 动态长图排版：换行算法、字体解析、端到端渲染 |
-| `tests/test_config.py` | 27 | 配置：TOML 分层、环境变量与命令行覆盖、校验与错误提示 |
+| `tests/test_config.py` | 34 | 配置：TOML 分层、环境变量与命令行覆盖、校验与错误提示（含导图样式取值校验与自定义样式文件路径解析） |
 | `tests/test_client.py` | 21 | 传输层：WBI 签名、限速/退避、错误分类、图片下载与 URL 升级 |
 | `tests/test_paths.py` | 20 | 路径与落盘：名称清理、作者目录复用、原子写入、单写者锁 |
 | `tests/test_filters.py` | 14 | 筛选：日期范围（北京时间闭区间）、跨类最新 N、平局顺序、置顶排序 |
@@ -539,7 +589,7 @@ README.md                                    安装、使用、已知限制（�
 config.example.toml                          配置模板（只含占位符）
 prompts/summary.toml                         总结 prompt 示例（真 TOML）
 bili_sub_archive/                                    产品代码
-tests/                                       离线测试（473 项，见 11）
+tests/                                       离线测试（503 项，见 11）
 docs/archive/README.md                       开发过程归档索引（冻结，不再维护）
 docs/archive/REQUIREMENTS.md                 需求与验收标准
 docs/archive/DEVELOPMENT_PLAN.md             开发方案与阶段门槛
@@ -575,5 +625,5 @@ bili_sub_archive/
   media.py        yt-dlp 下载、分片并发/续传、ffprobe 校验
   transcript/     字幕提取、SRT、ASR 兜底、跨 P 合并
   render/         动态长图渲染（Pillow + 字体探测）
-  summarize/      LLM 客户端、分块、prompt、受控大纲、Mermaid 与 mmdc
+  summarize/      LLM 客户端、分块、prompt、受控大纲、Mermaid 与 mmdc（mindmap_style = 渲染样式预设）
 ```

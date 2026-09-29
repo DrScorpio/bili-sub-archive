@@ -7,7 +7,8 @@
 2. 渲染到临时文件名再原子替换 —— 半张图不会被当成成功产物；
 3. 校验 PNG 签名与 IHDR 尺寸（纯标准库读头，不需要 Pillow），空文件/HTML 错误页会被
    判为 ``render_invalid``；
-4. 失败一律返回 :class:`RenderOutcome`，不抛异常：``.mmd`` 已经落盘，``retry`` 只补渲染。
+4. 失败一律返回 :class:`RenderOutcome`，不抛异常：``.mmd`` 已经落盘，``retry`` 只补渲染；
+5. 样式（``-c`` / ``--cssFile``）由 :mod:`.mindmap_style` 生成，本模块只负责把它拼进命令行。
 """
 
 from __future__ import annotations
@@ -73,10 +74,22 @@ def png_size(path: str | Path) -> tuple[int, int]:
 
 
 def build_argv(mmdc: str, mmd_path: Path, png_path: Path, *, width: int = 1600,
-               background: str = "white", puppeteer_config: str = "") -> list[str]:
+               background: str = "white", puppeteer_config: str = "",
+               config_file: str = "", css_file: str = "") -> list[str]:
+    """拼 mmdc 命令行。
+
+    ``config_file`` / ``css_file`` 是样式入口（见 :mod:`.mindmap_style`）：
+    ``-c`` 传 Mermaid 配置 JSON（主题/配色/字体/mindmap 选项），
+    ``--cssFile`` 注入页面 CSS（做配置做不到的卡片描边、文字色）。
+    两者留空时命令行与改造前逐字一致。
+    """
     argv = [str(mmdc), "-i", str(mmd_path), "-o", str(png_path), "-w", str(int(width))]
     if background:
         argv += ["-b", str(background)]
+    if config_file:
+        argv += ["-c", str(config_file)]
+    if css_file:
+        argv += ["--cssFile", str(css_file)]
     if puppeteer_config:
         argv += ["-p", str(puppeteer_config)]
     return argv
@@ -101,6 +114,8 @@ def render_mindmap(
     background: str = "white",
     timeout: float = 120.0,
     puppeteer_config: str = "",
+    config_file: str = "",
+    css_file: str = "",
     runner=None,
     logger=None,
 ) -> RenderOutcome:
@@ -126,7 +141,8 @@ def render_mindmap(
             pass
 
     outcome.argv = build_argv(mmdc, mmd_path, tmp, width=width, background=background,
-                              puppeteer_config=puppeteer_config)
+                              puppeteer_config=puppeteer_config, config_file=config_file,
+                              css_file=css_file)
     execute = runner or _default_runner(float(timeout))
     try:
         code, stdout, stderr = execute(outcome.argv)
